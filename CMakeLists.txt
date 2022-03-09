@@ -8,6 +8,9 @@ set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
+option (USING_ENTITY_MANAGER_DECORATORS
+        "Enable using EM decorators to map FRUs to entity IDs" OFF)
+
 set (
     CMAKE_CXX_FLAGS
     "${CMAKE_CXX_FLAGS} \
@@ -39,15 +42,22 @@ if (YOCTO)
     link_directories (${LIBIPMID_LIBRARY_DIRS})
 endif ()
 
-execute_process(COMMAND ls ${SENSOR_YAML_GEN} RESULT_VARIABLE result OUTPUT_QUIET ERROR_QUIET)
-if (result)
-    message(FATAL_ERROR "SENSOR_YAML_GEN(${SENSOR_YAML_GEN}) is not valid")
+if (NOT USING_ENTITY_MANAGER_DECORATORS)
+    execute_process(COMMAND ls ${SENSOR_YAML_GEN} RESULT_VARIABLE result OUTPUT_QUIET ERROR_QUIET)
+    if (result)
+        message(FATAL_ERROR "SENSOR_YAML_GEN(${SENSOR_YAML_GEN}) is not valid")
+    endif ()
 endif ()
 
 include_directories (${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 include_directories (SYSTEM ${CMAKE_BINARY_DIR})
 
+if (USING_ENTITY_MANAGER_DECORATORS)
+add_library (zpwoemcmds
+             SHARED src/storagecommands.cpp src/appcommands.cpp
+             src/ipmi_to_redfish_hooks.cpp)
+else ()
 add_custom_command(OUTPUT sensor-gen.cpp
                   COMMAND python3 ./scripts/sensor_gen.py -i ${SENSOR_YAML_GEN}
                                                           -o ${CMAKE_BINARY_DIR}/ generate-cpp
@@ -59,6 +69,7 @@ add_library (zpwoemcmds
              SHARED src/storagecommands.cpp src/appcommands.cpp
              src/ipmi_to_redfish_hooks.cpp
              sensor-gen.cpp)
+endif ()
 set_target_properties (zpwoemcmds PROPERTIES VERSION "0.1.0")
 set_target_properties (zpwoemcmds PROPERTIES SOVERSION "0")
 target_link_libraries (zpwoemcmds stdc++fs)
@@ -72,4 +83,6 @@ install (TARGETS zpwoemcmds DESTINATION lib/ipmid-providers)
 
 target_compile_definitions (
     zpwoemcmds PRIVATE
+    $<$<BOOL:${USING_ENTITY_MANAGER_DECORATORS}>:
+    -DUSING_ENTITY_MANAGER_DECORATORS>
 )

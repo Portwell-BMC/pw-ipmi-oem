@@ -405,10 +405,18 @@ ipmi::RspType<uint16_t, // Next Record ID
             }
 
             // Get the sensor type, sensor number, and event type for the sensor
+#ifdef USING_ENTITY_MANAGER_DECORATORS
+            sensorType = getSensorTypeFromPath(sensorPath);
+            sensorAndLun = getSensorNumberFromPath(sensorPath);
+            sensorNum = static_cast<uint8_t>(sensorAndLun);
+            generatorID |= sensorAndLun >> 8;
+            eventType = getSensorEventTypeFromPath(sensorPath);
+#else          
             sensorType = ipmi::sensor::getSensorTypeFromPath(sensorPath);
             sensorNum = ipmi::sensor::getSensorNumberFromPath(sensorPath);
             generatorID |= sensorAndLun >> 8;
             eventType = ipmi::sensor::getSensorEventTypeFromPath(sensorPath);
+#endif
 
             // Get the event direction
             try
