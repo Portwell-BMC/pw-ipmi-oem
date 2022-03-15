@@ -42,7 +42,7 @@ static constexpr bool DEBUG = false;
 
 namespace pw_oem::ipmi::sel
 {
-static const std::filesystem::path selLogDir = "/var/log";
+static const std::filesystem::path selLogDir = SEL_LOG_DIR;
 static const std::string selLogFilename = "ipmi_sel";
 
 static int getFileTimestamp(const std::filesystem::path& file)

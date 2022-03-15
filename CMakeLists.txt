@@ -31,6 +31,12 @@ add_definitions (-DBOOST_ASIO_DISABLE_THREADS)
 add_definitions (-DBOOST_COROUTINES_NO_DEPRECATION_WARNING)
 add_definitions (-Wno-psabi)
 
+if (NOT DEFINED SEL_LOG_DIR OR "${SEL_LOG_DIR}" STREQUAL "")
+    set (SEL_LOG_DIR "/var/log" STRING)
+    message (WARNING "SEL_LOG_DIR is undefined. Set default value ${SEL_LOG_DIR}.")
+endif()
+add_definitions(-DSEL_LOG_DIR="${SEL_LOG_DIR}")
+
 if (YOCTO)
     find_package (PkgConfig REQUIRED)
     pkg_check_modules (LOGGING phosphor-logging REQUIRED)
