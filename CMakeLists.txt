@@ -62,7 +62,7 @@ include_directories (SYSTEM ${CMAKE_BINARY_DIR})
 if (USING_ENTITY_MANAGER_DECORATORS)
 add_library (zpwoemcmds
              SHARED src/storagecommands.cpp src/appcommands.cpp
-             src/chassiscommands.cpp
+             src/chassiscommands.cpp src/smbiosmdrv2handler.cpp
              src/ipmi_to_redfish_hooks.cpp)
 else ()
 add_custom_command(OUTPUT sensor-gen.cpp
@@ -74,7 +74,7 @@ add_custom_target(run ALL DEPENDS sensor-gen.cpp)
 
 add_library (zpwoemcmds
              SHARED src/storagecommands.cpp src/appcommands.cpp
-             src/chassiscommands.cpp
+             src/chassiscommands.cpp src/smbiosmdrv2handler.cpp
              src/ipmi_to_redfish_hooks.cpp
              sensor-gen.cpp)
 endif ()
