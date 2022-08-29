@@ -27,6 +27,7 @@
 #include <boost/process.hpp>
 #include <ipmid/api.hpp>
 #include <ipmid/message.hpp>
+#include <ipmid/utils.hpp>
 #include <phosphor-ipmi-host/selutility.hpp>
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/message/types.hpp>
@@ -91,6 +92,15 @@ namespace ipmi
 
 namespace storage
 {
+const static constexpr char* bmcTimeService =
+    "xyz.openbmc_project.Time.Manager";
+const static constexpr char* bmcTimeObject =
+    "/xyz/openbmc_project/time/bmc";
+static constexpr const char* bmcTimeIntf = 
+    "xyz.openbmc_project.Time.EpochTime";
+const static constexpr char* bmcTimeProp = "Elapsed";
+
+static ipmi::ServiceCache BmcTimeService(bmcTimeIntf, bmcTimeObject);
 
 void registerStorageFunctions() __attribute__((constructor));
 
@@ -576,8 +586,23 @@ ipmi::RspType<uint32_t> ipmiStorageGetSELTime()
 
 ipmi::RspType<> ipmiStorageSetSELTime(uint32_t selTime)
 {
-    // Set SEL Time is not supported
-    return ipmi::responseInvalidCommand();
+    auto bus = getSdBus();
+    try
+    {
+        std::string service = BmcTimeService.getService(*bus);
+        setDbusProperty(*bus, service, bmcTimeObject, bmcTimeIntf, bmcTimeProp,
+                        static_cast<uint64_t>(selTime) * 1000000);
+    }
+    catch (const std::exception& e)
+    {
+        phosphor::logging::log<phosphor::logging::level::ERR>(
+		    "Failed to set time",
+            phosphor::logging::entry("EXCEPTION=%s", e.what()),
+            phosphor::logging::entry("TIME=%u", selTime));
+        return ipmi::responseResponseError();
+    }
+
+    return ipmi::responseSuccess();
 }
 
 void registerStorageFunctions()
@@ -602,15 +627,16 @@ void registerStorageFunctions()
                           ipmi::storage::cmdClearSel, ipmi::Privilege::Operator,
                           ipmiStorageClearSEL);
 
-    // <Get SEL Time>
-    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnStorage,
-                          ipmi::storage::cmdGetSelTime, ipmi::Privilege::User,
-                          ipmiStorageGetSELTime);
-
     // <Set SEL Time>
     ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnStorage,
                           ipmi::storage::cmdSetSelTime,
                           ipmi::Privilege::Operator, ipmiStorageSetSELTime);
+#if 0
+    // <Get SEL Time>
+    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnStorage,
+                          ipmi::storage::cmdGetSelTime, ipmi::Privilege::User,
+                          ipmiStorageGetSELTime);
+#endif
 }
 } // namespace storage
 } // namespace ipmi
