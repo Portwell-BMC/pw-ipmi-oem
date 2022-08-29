@@ -22,6 +22,7 @@
 #include "sdrutils.hpp"
 #include "types.hpp"
 
+#include <boost/algorithm/hex.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/container/flat_map.hpp>
 #include <boost/process.hpp>
@@ -29,6 +30,7 @@
 #include <ipmid/message.hpp>
 #include <ipmid/utils.hpp>
 #include <phosphor-ipmi-host/selutility.hpp>
+#include <phosphor-ipmi-host/sensorhandler.hpp>
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/message/types.hpp>
 #include <sdbusplus/timer.hpp>
@@ -399,36 +401,70 @@ ipmi::RspType<uint16_t, // Next Record ID
         uint8_t sensorNum = 0xFF;
         uint7_t eventType = 0;
         bool eventDir = 0;
-        // System type events should have six fields
+        std::array<uint8_t, pw_oem::ipmi::sel::systemEventSize> eventData{};
+        // System SEL
         if (targetEntryFields.size() >= 6)
         {
             std::string& generatorIDStr = targetEntryFields[3];
             std::string& sensorPath = targetEntryFields[4];
             std::string& eventDirStr = targetEntryFields[5];
+            const std::string bmcPathPrefix = "/xyz";
+            const std::string platformEventPathPrefix = "PE_";
+            const std::string addSELPathPrefix = "AddSEL_";
 
-            // Get the generator ID
-            try
+            if (sensorPath.compare(0, bmcPathPrefix.size(), bmcPathPrefix) == 0)
             {
-                generatorID = std::stoul(generatorIDStr, nullptr, 16);
-            }
-            catch (const std::invalid_argument&)
-            {
-                std::cerr << "Invalid Generator ID\n";
-            }
+                // Get the generator ID
+                try
+                {
+                    generatorID = std::stoul(generatorIDStr, nullptr, 16);
+                }
+                catch (const std::invalid_argument&)
+                {
+                    std::cerr << "Invalid Generator ID\n";
+                }
 
-            // Get the sensor type, sensor number, and event type for the sensor
+                // Get the sensor type, sensor number, and event type for the sensor
 #ifdef USING_ENTITY_MANAGER_DECORATORS
-            sensorType = getSensorTypeFromPath(sensorPath);
-            sensorAndLun = getSensorNumberFromPath(sensorPath);
-            sensorNum = static_cast<uint8_t>(sensorAndLun);
-            generatorID |= sensorAndLun >> 8;
-            eventType = getSensorEventTypeFromPath(sensorPath);
-#else          
-            sensorType = ipmi::sensor::getSensorTypeFromPath(sensorPath);
-            sensorNum = ipmi::sensor::getSensorNumberFromPath(sensorPath);
-            generatorID |= sensorAndLun >> 8;
-            eventType = ipmi::sensor::getSensorEventTypeFromPath(sensorPath);
+                sensorType = getSensorTypeFromPath(sensorPath);
+                sensorAndLun = getSensorNumberFromPath(sensorPath);
+                sensorNum = static_cast<uint8_t>(sensorAndLun);
+                generatorID |= sensorAndLun >> 8;
+                eventType = getSensorEventTypeFromPath(sensorPath);
+#else
+                sensorType = ipmi::sensor::getSensorTypeFromPath(sensorPath);
+                sensorNum = ipmi::sensor::getSensorNumberFromPath(sensorPath);
+                generatorID |= sensorAndLun >> 8;
+                eventType = ipmi::sensor::getSensorEventTypeFromPath(sensorPath);
 #endif
+                std::copy_n(eventDataBytes.begin(),
+                            std::min(eventDataBytes.size(), eventData.size()),
+                            eventData.begin());
+            }
+            else if (sensorPath.compare(0, platformEventPathPrefix.size(), platformEventPathPrefix) == 0 ||
+                     sensorPath.compare(0, addSELPathPrefix.size(), addSELPathPrefix) == 0)
+            {
+                if (eventDataBytes.size() == 8)
+                {
+                    sensorType = eventDataBytes[2];
+                    sensorNum = eventDataBytes[3];
+                    eventType = eventDataBytes[4] & 0x7F;
+                    std::copy_n(eventDataBytes.begin() + 5, 3,
+                                eventData.begin());
+                }
+                else if (eventDataBytes.size() == 7)
+                {
+                    sensorType = eventDataBytes[1];
+                    sensorNum = eventDataBytes[2];
+                    eventType = eventDataBytes[3] & 0x7F;
+                    std::copy_n(eventDataBytes.begin() + 4, 3,
+                                eventData.begin());
+                }
+            }
+            else
+            {
+                std::cerr << "Unknown sensor path: " << sensorPath << "\n";
+            }
 
             // Get the event direction
             try
@@ -439,18 +475,21 @@ ipmi::RspType<uint16_t, // Next Record ID
             {
                 std::cerr << "Invalid Event Direction\n";
             }
+
+            return ipmi::responseSuccess(
+                nextRecordID, recordID, recordType,
+                systemEventType{timestamp, generatorID, evmRev, sensorType,
+                                sensorNum, eventType, eventDir, eventData});
         }
+        else
+        {
+            std::cerr << "Invalid SEL entry\n";
 
-        // Only keep the eventData bytes that fit in the record
-        std::array<uint8_t, pw_oem::ipmi::sel::systemEventSize> eventData{};
-        std::copy_n(eventDataBytes.begin(),
-                    std::min(eventDataBytes.size(), eventData.size()),
-                    eventData.begin());
-
-        return ipmi::responseSuccess(
-            nextRecordID, recordID, recordType,
-            systemEventType{timestamp, generatorID, evmRev, sensorType,
-                            sensorNum, eventType, eventDir, eventData});
+            return ipmi::responseSuccess(
+                nextRecordID, recordID, recordType,
+                systemEventType{timestamp, generatorID, evmRev, sensorType,
+                                sensorNum, eventType, eventDir, eventData});
+        }
     }
     else if (recordType >= pw_oem::ipmi::sel::oemTsEventFirst &&
              recordType <= pw_oem::ipmi::sel::oemTsEventLast)
@@ -490,23 +529,137 @@ ipmi::RspType<uint16_t, // Next Record ID
 }
 
 ipmi::RspType<uint16_t> ipmiStorageAddSELEntry(
-    uint16_t recordID, uint8_t recordType, uint32_t timestamp,
-    uint16_t generatorID, uint8_t evmRev, uint8_t sensorType, uint8_t sensorNum,
-    uint8_t eventType, uint8_t eventData1, uint8_t eventData2,
-    uint8_t eventData3)
+    ipmi::Context::ptr ctx,
+    uint16_t recordID, uint8_t recordType,
+    std::array<uint8_t, 13> selData)
 {
+    uint32_t timestamp = selData[0] | (selData[1] << 8) | 
+                        (selData[2] << 16) | (selData[3] << 24);
+    uint16_t generatorID = selData[4] | (selData[5] << 8);
+    uint8_t evmRev = selData[6];
+    uint8_t sensorType = selData[7];
+    uint8_t sensorNum = selData[8];
+    uint8_t eventType = selData[9];
+    uint8_t eventData1 = selData[10];
+    uint8_t eventData2 = selData[11];
+    uint8_t eventData3 = selData[12];
+    bool assert = true;
+    std::string sensorPath;
+    ipmi::ChannelInfo chInfo;
+
+    if (ipmi::getChannelInfo(ctx->channel, chInfo) != ipmi::ccSuccess)
+    {
+        log<level::ERR>("Failed to get Channel Info",
+                        entry("CHANNEL=%d", ctx->channel));
+        return ipmi::responseUnspecifiedError();
+    }
+
+    // Check for valid evmRev and Sensor Type(per Table 42 of spec)
+#if 0
+    // Some hosts do not set evmRev to 0x04
+    if (evmRev != 0x04)
+    {
+        return ipmi::responseInvalidFieldRequest();
+    }
+#endif
+    if ((sensorType > 0x2C) && (sensorType < 0xC0))
+    {
+        return ipmi::responseInvalidFieldRequest();
+    }
+
     // Per the IPMI spec, need to cancel any reservation when a SEL entry is
     // added
     cancelSELReservation();
 
+    if (static_cast<ipmi::EChannelMediumType>(chInfo.mediumType) ==
+        ipmi::EChannelMediumType::systemInterface)
+    {
+        sensorPath = "AddSEL_System";
+    }
+    else if (static_cast<ipmi::EChannelMediumType>(chInfo.mediumType) ==
+             ipmi::EChannelMediumType::oem)
+    {
+        sensorPath = "AddSEL_Self";
+    }
+    else if (static_cast<ipmi::EChannelMediumType>(chInfo.mediumType) ==
+             ipmi::EChannelMediumType::ipmb)
+    {
+        sensorPath = "AddSEL_Ipmb";
+    }
+    else
+    {
+        sensorPath = "AddSEL_Unknown";
+    }
+
+    assert = eventType & directionMask ? false : true;
+
+    auto bus = getSdBus();
+    std::string service =
+        ipmi::getService(*bus, ipmiSELAddInterface, ipmiSELPath);
+    sdbusplus::message::message writeSEL;
+    if (recordType == pw_oem::ipmi::sel::systemEvent)
+    {
+        std::vector<uint8_t> eventData{selData.begin() + 6, selData.end()};
+        writeSEL = bus->new_method_call(
+            service.c_str(), ipmiSELPath, ipmiSELAddInterface, "IpmiSelAdd");
+        writeSEL.append(ipmiSELAddMessage, sensorPath, eventData, assert,
+                        generatorID);
+    }
+    else if (recordType >= pw_oem::ipmi::sel::oemTsEventFirst &&
+             recordType <= pw_oem::ipmi::sel::oemTsEventLast)
+    {
+        std::vector<uint8_t> eventData{selData.begin() + 4, selData.end()};
+        writeSEL = bus->new_method_call(
+            service.c_str(), ipmiSELPath, ipmiSELAddInterface, "IpmiSelAddOem");
+        writeSEL.append(ipmiSELAddMessage, eventData, recordType);
+    }
+    else if (recordType >= pw_oem::ipmi::sel::oemEventFirst)
+    {
+        std::vector<uint8_t> eventData{selData.begin(), selData.end()};
+        writeSEL = bus->new_method_call(
+            service.c_str(), ipmiSELPath, ipmiSELAddInterface, "IpmiSelAddOem");
+        writeSEL.append(ipmiSELAddMessage, eventData, recordType);
+    }
+    else
+    {
+        return ipmi::responseUnspecifiedError();
+    }
+    try
+    {
+        bus->call(writeSEL);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        log<level::ERR>(e.what());
+        return ipmi::responseResponseError();
+    }
+
+    unsigned int savedRecordID = 0xFFFF;
+    auto getRecordId = bus->new_method_call(
+        service.c_str(), ipmiSELPath, ipmiSELAddInterface, "GetCurrentRecordId");
+    try
+    {
+        auto result = bus->call(getRecordId);
+        result.read(savedRecordID);
+        if (savedRecordID == 0 || savedRecordID > 0xFFFF)
+        {
+            savedRecordID = 0xFFFF;
+            log<level::WARNING>("Invalid record ID",
+                                entry("RecordID=%u", savedRecordID));
+        }
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        log<level::ERR>(e.what());
+        return ipmi::responseResponseError();
+    }
+
     // Send this request to the Redfish hooks to log it as a Redfish message
-    // instead.  There is no need to add it to the SEL, so just return success.
     pw_oem::ipmi::sel::checkRedfishHooks(
         recordID, recordType, timestamp, generatorID, evmRev, sensorType,
         sensorNum, eventType, eventData1, eventData2, eventData3);
 
-    uint16_t responseID = 0xFFFF;
-    return ipmi::responseSuccess(responseID);
+    return ipmi::responseSuccess(static_cast<uint16_t>(savedRecordID));
 }
 
 ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
