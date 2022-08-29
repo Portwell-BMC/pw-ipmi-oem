@@ -27,7 +27,7 @@ bool checkRedfishHooks(uint16_t recordID, uint8_t recordType,
                        uint8_t sensorType, uint8_t sensorNum, uint8_t eventType,
                        uint8_t eventData1, uint8_t eventData2,
                        uint8_t eventData3);
-bool checkRedfishHooks(uint8_t generatorID, uint8_t evmRev, uint8_t sensorType,
+bool checkRedfishHooks(uint16_t generatorID, uint8_t evmRev, uint8_t sensorType,
                        uint8_t sensorNum, uint8_t eventType, uint8_t eventData1,
                        uint8_t eventData2, uint8_t eventData3);
 namespace redfish_hooks
@@ -35,6 +35,7 @@ namespace redfish_hooks
 struct SELData
 {
     int generatorID;
+    int sensorType;
     int sensorNum;
     int eventType;
     int offset;
@@ -42,40 +43,15 @@ struct SELData
     int eventData3;
 };
 
-enum class BIOSSensors
+enum class BIOSSensorType
 {
-    memoryRASConfigStatus = 0x02,
-    biosPOSTError = 0x06,
-    intelUPILinkWidthReduced = 0x09,
-    memoryRASModeSelect = 0x12,
-    bootEvent = 0x83,
-};
-
-enum class BIOSSMISensors
-{
-    mirroringRedundancyState = 0x01,
-    memoryECCError = 0x02,
-    legacyPCIError = 0x03,
-    pcieFatalError = 0x04,
-    pcieCorrectableError = 0x05,
-    sparingRedundancyState = 0x11,
-    memoryParityError = 0x13,
-    pcieFatalError2 = 0x14,
-    biosRecovery = 0x15,
-    adddcError = 0x20,
+    systemFirmwareProgress = 0x0F,
+    systemEvent = 0x12,
 };
 
 enum class BIOSEventTypes
 {
-    digitalDiscrete = 0x09,
-    discreteRedundancyStates = 0x0b,
-    sensorSpecificOffset = 0x6f,
-    oemDiscrete0 = 0x70,
-    oemDiscrete1 = 0x71,
-    oemDiscrete6 = 0x76,
-    oemDiscrete7 = 0x77,
-    reservedA0 = 0xa0,
-    reservedF0 = 0xf0,
+    sensorSpecificDiscrete = 0x6F,
 };
 
 static inline bool defaultMessageHook(const std::string& ipmiRaw)

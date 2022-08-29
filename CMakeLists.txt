@@ -63,7 +63,8 @@ if (USING_ENTITY_MANAGER_DECORATORS)
 add_library (zpwoemcmds
              SHARED src/storagecommands.cpp src/appcommands.cpp
              src/chassiscommands.cpp src/smbiosmdrv2handler.cpp
-             src/ipmi_to_redfish_hooks.cpp)
+             src/sensorcommands.cpp
+             src/ipmi_to_redfish_hooks.cpp src/me_to_redfish_hooks.cpp)
 else ()
 add_custom_command(OUTPUT sensor-gen.cpp
                   COMMAND python3 ./scripts/sensor_gen.py -i ${SENSOR_YAML_GEN}
@@ -75,7 +76,8 @@ add_custom_target(run ALL DEPENDS sensor-gen.cpp)
 add_library (zpwoemcmds
              SHARED src/storagecommands.cpp src/appcommands.cpp
              src/chassiscommands.cpp src/smbiosmdrv2handler.cpp
-             src/ipmi_to_redfish_hooks.cpp
+             src/sensorcommands.cpp
+             src/ipmi_to_redfish_hooks.cpp src/me_to_redfish_hooks.cpp
              sensor-gen.cpp)
 endif ()
 set_target_properties (zpwoemcmds PROPERTIES VERSION "0.1.0")
