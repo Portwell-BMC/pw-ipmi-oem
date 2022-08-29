@@ -352,7 +352,7 @@ static std::optional<bool> getButtonEnabled(const std::string& buttonPath)
     return std::make_optional(buttonDisabled);
 }
 
-static bool setButtonEnabled(const std::string& buttonPath, const bool disabled)
+static bool setButtonDisabled(const std::string& buttonPath, const bool disabled)
 {
     try
     {
@@ -613,10 +613,7 @@ ipmi::RspType<uint4_t, // Restart Cause
                                  reserved, channel);
 }
 
-ipmi::RspType<> ipmiSetFrontPanelButtonEnables(bool disablePowerButton,
-                                               bool disableResetButton,
-                                               bool disableInterruptButton,
-                                               bool disableSleepButton,
+ipmi::RspType<> ipmiSetFrontPanelButtonEnables(uint4_t buttonDisables,
                                                uint4_t reserved)
 {
     if (reserved)
@@ -625,10 +622,15 @@ ipmi::RspType<> ipmiSetFrontPanelButtonEnables(bool disablePowerButton,
     }
     bool error = false;
 
-    error |= setButtonEnabled(powerButtonPath, disablePowerButton);
-    error |= setButtonEnabled(resetButtonPath, disableResetButton);
-    error |= setButtonEnabled(interruptButtonPath, disableInterruptButton);
-
+    error |= setButtonDisabled(powerButtonPath,
+                               buttonDisables & 0x01 ? true : false);
+    error |= setButtonDisabled(resetButtonPath,
+                               buttonDisables & 0x02 ? true : false);
+/*
+    // Currently, our board do not support interrupt button
+    error |= setButtonDisabled(interruptButtonPath,
+                               buttonDisables & 0x04 ? false : true);
+*/
     if (error)
     {
         return ipmi::responseUnspecifiedError();
