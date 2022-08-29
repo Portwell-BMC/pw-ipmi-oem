@@ -698,30 +698,20 @@ ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
     // Save the erase time
     pw_oem::ipmi::sel::erase_time::save();
 
-    // Clear the SEL by deleting the log files
-    std::vector<std::filesystem::path> selLogFiles;
-    if (getSELLogFiles(selLogFiles))
-    {
-        for (const std::filesystem::path& file : selLogFiles)
-        {
-            std::error_code ec;
-            std::filesystem::remove(file, ec);
-        }
-    }
-
-    // Reload rsyslog so it knows to start new log files
-    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
-    sdbusplus::message::message rsyslogReload = dbus->new_method_call(
-        "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager", "ReloadUnit");
-    rsyslogReload.append("rsyslog.service", "replace");
+    // Clear the SEL by phosphor-sel-logger
+    auto bus = getSdBus();
+    std::string service =
+        ipmi::getService(*bus, ipmiSELAddInterface, ipmiSELPath);
+    auto clearSEL = bus->new_method_call(
+        service.c_str(), ipmiSELPath, ipmiSELAddInterface, "Clear");
     try
     {
-        sdbusplus::message::message reloadResponse = dbus->call(rsyslogReload);
+        bus->call(clearSEL);
     }
     catch (const sdbusplus::exception_t& e)
     {
         log<level::ERR>(e.what());
+        return ipmi::responseResponseError();
     }
 
     return ipmi::responseSuccess(ipmi::sel::eraseComplete);
