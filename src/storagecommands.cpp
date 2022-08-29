@@ -39,6 +39,8 @@
 #include <stdexcept>
 #include <string_view>
 
+using namespace phosphor::logging;
+
 static constexpr bool DEBUG = false;
 
 namespace pw_oem::ipmi::sel
@@ -209,12 +211,12 @@ static int fromHexStr(const std::string& hexStr, std::vector<uint8_t>& data)
         }
         catch (const std::invalid_argument& e)
         {
-            phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
+            log<level::ERR>(e.what());
             return -1;
         }
         catch (const std::out_of_range& e)
         {
-            phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
+            log<level::ERR>(e.what());
             return -1;
         }
     }
@@ -566,7 +568,7 @@ ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
     }
     catch (const sdbusplus::exception_t& e)
     {
-        phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
+        log<level::ERR>(e.what());
     }
 
     return ipmi::responseSuccess(ipmi::sel::eraseComplete);
@@ -595,10 +597,9 @@ ipmi::RspType<> ipmiStorageSetSELTime(uint32_t selTime)
     }
     catch (const std::exception& e)
     {
-        phosphor::logging::log<phosphor::logging::level::ERR>(
-		    "Failed to set time",
-            phosphor::logging::entry("EXCEPTION=%s", e.what()),
-            phosphor::logging::entry("TIME=%u", selTime));
+        log<level::ERR>("Failed to set time",
+                        entry("EXCEPTION=%s", e.what()),
+                        entry("TIME=%u", selTime));
         return ipmi::responseResponseError();
     }
 
