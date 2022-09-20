@@ -412,29 +412,37 @@ ipmi::RspType<uint16_t, // Next Record ID
             const std::string platformEventPathPrefix = "PE_";
             const std::string addSELPathPrefix = "AddSEL_";
 
+            // Get the generator ID
+            try
+            {
+                generatorID = std::stoul(generatorIDStr, nullptr, 16);
+            }
+            catch (const std::invalid_argument&)
+            {
+                std::cerr << "Invalid Generator ID\n";
+            }
+
             if (sensorPath.compare(0, bmcPathPrefix.size(), bmcPathPrefix) == 0)
             {
-                // Get the generator ID
-                try
-                {
-                    generatorID = std::stoul(generatorIDStr, nullptr, 16);
-                }
-                catch (const std::invalid_argument&)
-                {
-                    std::cerr << "Invalid Generator ID\n";
-                }
-
                 // Get the sensor type, sensor number, and event type for the sensor
 #ifdef USING_ENTITY_MANAGER_DECORATORS
                 sensorType = getSensorTypeFromPath(sensorPath);
                 sensorAndLun = getSensorNumberFromPath(sensorPath);
                 sensorNum = static_cast<uint8_t>(sensorAndLun);
-                generatorID |= sensorAndLun >> 8;
                 eventType = getSensorEventTypeFromPath(sensorPath);
+                if ((generatorID & 0x0001) == 0)
+                {
+                    // IPMB Address
+                    generatorID |= sensorAndLun & 0x0300;
+                }
+                else
+                {
+                    // system software
+                    generatorID |= sensorAndLun >> 8;
+                }
 #else
                 sensorType = ipmi::sensor::getSensorTypeFromPath(sensorPath);
                 sensorNum = ipmi::sensor::getSensorNumberFromPath(sensorPath);
-                generatorID |= sensorAndLun >> 8;
                 eventType = ipmi::sensor::getSensorEventTypeFromPath(sensorPath);
 #endif
                 std::copy_n(eventDataBytes.begin(),
