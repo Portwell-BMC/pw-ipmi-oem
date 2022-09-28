@@ -63,7 +63,7 @@ if (USING_ENTITY_MANAGER_DECORATORS)
 add_library (zpwoemcmds
              SHARED src/storagecommands.cpp src/appcommands.cpp
              src/chassiscommands.cpp src/smbiosmdrv2handler.cpp
-             src/sensorcommands.cpp src/oemcommands.cpp
+             src/sensorcommands.cpp src/dcmicommands.cpp src/oemcommands.cpp
              src/ipmi_to_redfish_hooks.cpp src/me_to_redfish_hooks.cpp)
 else ()
 add_custom_command(OUTPUT sensor-gen.cpp
